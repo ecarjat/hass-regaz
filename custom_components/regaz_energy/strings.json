@@ -1,0 +1,73 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to REGAZ",
+        "description": "Enter your monespace.regaz.fr credentials.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reconnect to REGAZ",
+        "description": "Your REGAZ session is no longer valid. Please re-enter credentials.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to REGAZ",
+      "invalid_auth": "Invalid REGAZ credentials",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This REGAZ account is already configured",
+      "reauth_successful": "Re-authentication was successful",
+      "wrong_account": "Credentials belong to a different REGAZ account"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "REGAZ options",
+        "data": {
+          "update_interval_hours": "Update interval (hours)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "total_energy_kwh": {
+        "name": "Total energy"
+      },
+      "total_gas_volume_m3": {
+        "name": "Total gas volume"
+      },
+      "current_month_energy_kwh": {
+        "name": "Current month energy"
+      },
+      "current_month_volume_m3": {
+        "name": "Current month gas volume"
+      },
+      "current_year_energy_kwh": {
+        "name": "Current year energy"
+      },
+      "current_year_volume_m3": {
+        "name": "Current year gas volume"
+      },
+      "meter_index": {
+        "name": "Meter index"
+      },
+      "meter_last_reading": {
+        "name": "Meter last reading"
+      },
+      "meter_last_reading_at": {
+        "name": "Meter last reading at"
+      }
+    }
+  }
+}

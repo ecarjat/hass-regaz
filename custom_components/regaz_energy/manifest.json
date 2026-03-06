@@ -1,0 +1,16 @@
+{
+  "domain": "regaz_energy",
+  "name": "REGAZ Energy",
+  "codeowners": [
+    "@emmanuelcarjat"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/emmanuelcarjat/regaz#readme",
+  "issue_tracker": "https://github.com/emmanuelcarjat/regaz/issues",
+  "iot_class": "cloud_polling",
+  "loggers": [
+    "custom_components.regaz_energy"
+  ],
+  "requirements": [],
+  "version": "0.1.0"
+}
