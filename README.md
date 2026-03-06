@@ -2,6 +2,8 @@
 
 Custom Home Assistant integration and reverse-engineering toolkit for `https://monespace.regaz.fr`.
 
+Repository: `https://github.com/ecarjat/hass-regaz`
+
 ## Features
 
 - Home Assistant custom integration domain: `regaz_energy`
@@ -20,7 +22,7 @@ Custom Home Assistant integration and reverse-engineering toolkit for `https://m
 ### HACS
 
 1. Open HACS in Home Assistant.
-2. Add this repository as a custom repository (`Integration` category).
+2. Add `https://github.com/ecarjat/hass-regaz` as a custom repository (`Integration` category).
 3. Install `REGAZ Energy`.
 4. Restart Home Assistant.
 5. Add the integration from `Settings -> Devices & Services`.
