@@ -70,3 +70,23 @@ async def test_meter_sensor_is_diagnostic_and_has_value(hass) -> None:
 
     assert entity.native_value == pytest.approx(1295.0)
     assert entity.entity_description.entity_category is not None
+
+
+def test_current_period_energy_and_gas_use_total_state_class() -> None:
+    current_month_energy = next(
+        item for item in SENSOR_DESCRIPTIONS if item.key == "current_month_energy_kwh"
+    )
+    current_month_volume = next(
+        item for item in SENSOR_DESCRIPTIONS if item.key == "current_month_volume_m3"
+    )
+    current_year_energy = next(
+        item for item in SENSOR_DESCRIPTIONS if item.key == "current_year_energy_kwh"
+    )
+    current_year_volume = next(
+        item for item in SENSOR_DESCRIPTIONS if item.key == "current_year_volume_m3"
+    )
+
+    assert current_month_energy.state_class == SensorStateClass.TOTAL
+    assert current_month_volume.state_class == SensorStateClass.TOTAL
+    assert current_year_energy.state_class == SensorStateClass.TOTAL
+    assert current_year_volume.state_class == SensorStateClass.TOTAL
