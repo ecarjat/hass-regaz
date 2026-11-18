@@ -9,12 +9,12 @@ import pytest
 pytest.importorskip("homeassistant")
 pytest.importorskip("pytest_homeassistant_custom_component")
 
-from homeassistant.config_entries import SOURCE_REAUTH, SOURCE_USER
+from homeassistant.config_entries import SOURCE_REAUTH, SOURCE_USER, OptionsFlow
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.regaz_energy.const import DOMAIN
+from custom_components.regaz_energy.const import CONF_UPDATE_INTERVAL_HOURS, DOMAIN
 
 
 @pytest.mark.asyncio
@@ -95,3 +95,26 @@ async def test_reauth_flow_updates_credentials(
 
     assert result2["type"] == FlowResultType.ABORT
     assert result2["reason"] == "reauth_successful"
+
+
+@pytest.mark.asyncio
+async def test_options_flow_updates_interval(hass, enable_custom_integrations) -> None:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_USERNAME: "user@example.com", CONF_PASSWORD: "secret"},
+        options={CONF_UPDATE_INTERVAL_HOURS: 12},
+    )
+    entry.add_to_hass(hass)
+
+    # Newer Home Assistant versions expose config_entry as a read-only property.
+    with patch.object(OptionsFlow, "config_entry", property(OptionsFlow.config_entry.fget)):
+        result = await hass.config_entries.options.async_init(entry.entry_id)
+        assert result["type"] == FlowResultType.FORM
+        marker = next(iter(result["data_schema"].schema))
+        assert marker.description["suggested_value"] == 12
+
+        result = await hass.config_entries.options.async_configure(
+            result["flow_id"], {CONF_UPDATE_INTERVAL_HOURS: 6}
+        )
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert entry.options[CONF_UPDATE_INTERVAL_HOURS] == 6
