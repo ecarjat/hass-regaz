@@ -110,7 +110,11 @@ async def test_snapshot_preserves_meter_when_statistics_endpoint_fails() -> None
     snapshot = await client.async_get_home_snapshot()
     assert snapshot["meter_info"]["valeurPrecise"] == 123
     assert snapshot["statistics_all"] is None
-    assert set(snapshot["failed_sections"]) == {"indicators", "statistics_all"}
+    assert set(snapshot["failed_sections"]) == {
+        "indicators",
+        "statistics_all",
+        "statistics_day",
+    }
 
 
 @pytest.mark.asyncio

@@ -10,6 +10,7 @@ import math
 from typing import Any
 
 import aiohttp
+from homeassistant.util import dt as dt_util
 
 from .const import DEFAULT_BASE_URL
 
@@ -257,15 +258,22 @@ class RegazApiClient:
             (item for item in homes if str(item.get("uuid")) == home_uuid), None
         )
 
+        now = dt_util.now()
         results = await asyncio.gather(
             self.async_get_pce(home_uuid),
             self.async_get_meter_info(home_uuid),
             self.async_get_indicators(home_uuid),
             self.async_get_statistics(home_uuid, "all"),
+            self.async_get_statistics(
+                home_uuid, "day", params={"year": now.year, "month": now.month}
+            ),
             return_exceptions=True,
         )
         sections = dict(
-            zip(("pce", "meter_info", "indicators", "statistics_all"), results)
+            zip(
+                ("pce", "meter_info", "indicators", "statistics_all", "statistics_day"),
+                results,
+            )
         )
         meter = sections["meter_info"]
         if not isinstance(meter, BaseException):
@@ -288,6 +296,11 @@ class RegazApiClient:
             sections["statistics_all"] = RegazApiError(
                 "Consumption statistics are missing"
             )
+        daily = sections["statistics_day"]
+        if not isinstance(daily, BaseException) and (
+            not isinstance(daily, dict) or not isinstance(daily.get("data"), list)
+        ):
+            sections["statistics_day"] = RegazApiError("Daily statistics are missing")
         failures = [
             key for key, value in sections.items() if isinstance(value, BaseException)
         ]

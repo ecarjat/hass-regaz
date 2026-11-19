@@ -55,8 +55,12 @@ total gas volume entities sum the history currently returned by REGAZ. That
 history can be revised or truncated, so these entities no longer advertise an
 increasing state class and should not be used as cumulative Energy dashboard
 sources. Existing long-term statistics for them are preserved by Home Assistant,
-but new statistics are no longer generated for those two entities. Current
-month/year entities report unavailable until the matching period is returned.
+but new statistics are no longer generated for those two entities. If REGAZ has
+not published the current month's or year's summary, the period sensors derive
+totals from contiguous daily and monthly readings where possible. Their
+`through_date` and `through_month` attributes show the coverage of derived data.
+If there are gaps within the required coverage, the integration does not invent
+the missing readings.
 
 ### Importing historical daily consumption
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 import math
 from typing import Any
 
@@ -79,9 +79,6 @@ def _sum_field(rows: list[dict[str, Any]], field: str) -> float | None:
 
 def _current_month_row(payload: dict[str, Any]) -> dict[str, Any] | None:
     rows = _month_rows(payload)
-    if not rows:
-        return None
-
     now = dt_util.now()
     for row in rows:
         try:
@@ -93,23 +90,97 @@ def _current_month_row(payload: dict[str, Any]) -> dict[str, Any] | None:
         except (TypeError, ValueError):
             continue
 
-    return None
+    return _month_from_daily(payload, now.date())
+
+
+def _month_from_daily(payload: dict[str, Any], today: date) -> dict[str, Any] | None:
+    """Build a month-to-date row only from contiguous, valid daily readings."""
+    daily = payload.get("statistics_day")
+    rows = daily.get("data") if isinstance(daily, dict) else None
+    if not isinstance(rows, list):
+        return None
+    days: dict[int, tuple[float, float]] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            return None
+        try:
+            day = date(int(row["year"]), int(row["month"]), int(row["day"]))
+        except (KeyError, TypeError, ValueError, OverflowError):
+            return None
+        if day.year != today.year or day.month != today.month or day > today:
+            continue
+        energy, volume = _to_float(row.get("value")), _to_float(row.get("volume"))
+        if (
+            day.day in days
+            or energy is None
+            or volume is None
+            or energy < 0
+            or volume < 0
+        ):
+            return None
+        days[day.day] = (energy, volume)
+    if not days or set(days) != set(range(1, max(days) + 1)):
+        return None
+    last_day = max(days)
+    return {
+        "year": today.year,
+        "month": today.month,
+        "value": sum(value[0] for value in days.values()),
+        "volume": sum(value[1] for value in days.values()),
+        "data_source": "daily_readings",
+        "through_date": date(today.year, today.month, last_day).isoformat(),
+    }
 
 
 def _current_year_row(payload: dict[str, Any]) -> dict[str, Any] | None:
     rows = _year_rows(payload)
-    if not rows:
-        return None
-
     now = dt_util.now()
+    official = None
     for row in rows:
         try:
             if int(row.get("year", 0)) == now.year:
-                return row
+                official = row
+                break
         except (TypeError, ValueError):
             continue
 
-    return None
+    months: dict[int, dict[str, Any]] = {}
+    for row in _month_rows(payload):
+        try:
+            year, month = int(row.get("year", 0)), int(row.get("month", 0))
+        except (TypeError, ValueError):
+            return official
+        if year != now.year or not 1 <= month <= now.month:
+            continue
+        if month in months:
+            return official
+        months[month] = row
+
+    if now.month not in months and (current := _month_from_daily(payload, now.date())):
+        months[now.month] = current
+    if not months or set(months) != set(range(1, max(months) + 1)):
+        return official
+    if official:
+        try:
+            if int(official.get("monthCount", 0)) > len(months):
+                return official
+        except (TypeError, ValueError):
+            pass
+    energy = _sum_field(list(months.values()), "value")
+    volume = _sum_field(list(months.values()), "volume")
+    if energy is None or volume is None:
+        return official
+    latest = max(months)
+    return {
+        "year": now.year,
+        "value": energy,
+        "volume": volume,
+        "monthCount": len(months),
+        "complete": False,
+        "data_source": "monthly_and_daily_readings",
+        "through_month": latest,
+        "through_date": months[latest].get("through_date"),
+    }
 
 
 def _meter(payload: dict[str, Any]) -> dict[str, Any]:
@@ -126,6 +197,8 @@ def _month_attrs(payload: dict[str, Any]) -> dict[str, Any]:
         "month": row.get("month"),
         "month_year": row.get("monthYear"),
         "value_type": row.get("valueType"),
+        "data_source": row.get("data_source", "monthly_statistics"),
+        "through_date": row.get("through_date"),
     }
 
 
@@ -137,6 +210,9 @@ def _year_attrs(payload: dict[str, Any]) -> dict[str, Any]:
         "year": row.get("year"),
         "month_count": row.get("monthCount"),
         "complete": row.get("complete"),
+        "data_source": row.get("data_source", "yearly_statistics"),
+        "through_month": row.get("through_month"),
+        "through_date": row.get("through_date"),
     }
 
 

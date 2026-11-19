@@ -19,6 +19,8 @@ from custom_components.regaz_energy.coordinator import RegazDataUpdateCoordinato
 from custom_components.regaz_energy.sensor import (
     SENSOR_DESCRIPTIONS,
     RegazEnergySensor,
+    _current_month_row,
+    _current_year_row,
 )
 
 
@@ -191,3 +193,56 @@ async def test_incomplete_history_is_not_reported_as_a_total(hass) -> None:
     entity = RegazEnergySensor(coordinator, entry, description)
     coordinator.data["statistics_all"]["data"]["month"][0]["value"] = "NaN"
     assert entity.native_value is None
+
+
+def test_current_periods_use_daily_and_monthly_data_when_provider_totals_lag() -> None:
+    monthly = [
+        {"year": 2026, "month": str(month), "value": 100, "volume": 10}
+        for month in range(1, 11)
+    ]
+    daily = [
+        {"year": 2026, "month": "11", "day": str(day), "value": 5, "volume": 0.5}
+        for day in range(1, 4)
+    ]
+    payload = {
+        "statistics_all": {"data": {"month": monthly, "year": [{"year": 2025}]}},
+        "statistics_day": {"data": daily},
+    }
+    with patch(
+        "custom_components.regaz_energy.sensor.dt_util.now",
+        return_value=datetime(2026, 11, 19),
+    ):
+        month, year = _current_month_row(payload), _current_year_row(payload)
+        assert month["value"] == 15
+        assert month["volume"] == 1.5
+        assert month["through_date"] == "2026-11-03"
+        assert year["value"] == 1015
+        assert year["volume"] == 101.5
+        assert year["through_date"] == "2026-11-03"
+
+        # Once REGAZ supplies the monthly total, it replaces the daily fallback.
+        monthly.append({"year": 2026, "month": "11", "value": 55, "volume": 5.5})
+        assert _current_month_row(payload)["value"] == 55
+        assert _current_year_row(payload)["value"] == 1055
+
+
+def test_missing_daily_or_monthly_periods_are_not_invented() -> None:
+    payload = {
+        "statistics_all": {
+            "data": {
+                "month": [{"year": 2026, "month": "2", "value": 10, "volume": 1}],
+                "year": [],
+            }
+        },
+        "statistics_day": {
+            "data": [
+                {"year": 2026, "month": "11", "day": "2", "value": 10, "volume": 1}
+            ]
+        },
+    }
+    with patch(
+        "custom_components.regaz_energy.sensor.dt_util.now",
+        return_value=datetime(2026, 11, 19),
+    ):
+        assert _current_month_row(payload) is None
+        assert _current_year_row(payload) is None
