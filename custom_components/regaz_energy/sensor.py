@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+import math
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -32,49 +33,48 @@ class RegazSensorDescription(SensorEntityDescription):
     value_fn: Callable[[dict[str, Any]], StateType]
     exists_fn: Callable[[dict[str, Any]], bool] = lambda _: True
     attrs_fn: Callable[[dict[str, Any]], dict[str, Any]] = lambda _: {}
+    reset_fn: Callable[[dict[str, Any]], datetime | None] = lambda _: None
 
 
 def _statistics_all(payload: dict[str, Any]) -> dict[str, Any]:
-    return payload.get("statistics_all") if isinstance(payload.get("statistics_all"), dict) else {}
+    return (
+        payload.get("statistics_all")
+        if isinstance(payload.get("statistics_all"), dict)
+        else {}
+    )
 
 
 def _month_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
     data = _statistics_all(payload).get("data")
     rows = data.get("month") if isinstance(data, dict) else []
-    return rows if isinstance(rows, list) else []
+    return (
+        [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+    )
 
 
 def _year_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
     data = _statistics_all(payload).get("data")
     rows = data.get("year") if isinstance(data, dict) else []
-    return rows if isinstance(rows, list) else []
+    return (
+        [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+    )
 
 
 def _to_float(value: Any) -> float | None:
     try:
         if value is None:
             return None
-        return float(value)
-    except (TypeError, ValueError):
+        result = float(value)
+        return result if math.isfinite(result) else None
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
 def _sum_field(rows: list[dict[str, Any]], field: str) -> float | None:
     values = [_to_float(row.get(field)) for row in rows]
-    valid_values = [value for value in values if value is not None]
-    if not valid_values:
+    if not values or any(value is None for value in values):
         return None
-    return round(sum(valid_values), 3)
-
-
-def _month_sort_key(item: dict[str, Any]) -> tuple[int, int]:
-    year = int(item.get("year", 0))
-    month = int(item.get("month", 0))
-    return year, month
-
-
-def _year_sort_key(item: dict[str, Any]) -> int:
-    return int(item.get("year", 0))
+    return round(sum(value for value in values if value is not None), 3)
 
 
 def _current_month_row(payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -84,10 +84,16 @@ def _current_month_row(payload: dict[str, Any]) -> dict[str, Any] | None:
 
     now = dt_util.now()
     for row in rows:
-        if int(row.get("year", 0)) == now.year and int(row.get("month", 0)) == now.month:
-            return row
+        try:
+            if (
+                int(row.get("year", 0)) == now.year
+                and int(row.get("month", 0)) == now.month
+            ):
+                return row
+        except (TypeError, ValueError):
+            continue
 
-    return max(rows, key=_month_sort_key)
+    return None
 
 
 def _current_year_row(payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -97,10 +103,13 @@ def _current_year_row(payload: dict[str, Any]) -> dict[str, Any] | None:
 
     now = dt_util.now()
     for row in rows:
-        if int(row.get("year", 0)) == now.year:
-            return row
+        try:
+            if int(row.get("year", 0)) == now.year:
+                return row
+        except (TypeError, ValueError):
+            continue
 
-    return max(rows, key=_year_sort_key)
+    return None
 
 
 def _meter(payload: dict[str, Any]) -> dict[str, Any]:
@@ -131,6 +140,18 @@ def _year_attrs(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _period_reset(row: dict[str, Any] | None, *, monthly: bool) -> datetime | None:
+    """Return the start of the period represented by a consumption row."""
+    if not row:
+        return None
+    try:
+        year = int(row["year"])
+        month = int(row["month"]) if monthly else 1
+        return dt_util.start_of_local_day(datetime(year, month, 1))
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def _meter_timestamp(payload: dict[str, Any]) -> datetime | None:
     meter_date = _meter(payload).get("date")
     if not meter_date:
@@ -144,7 +165,6 @@ SENSOR_DESCRIPTIONS: tuple[RegazSensorDescription, ...] = (
         translation_key="total_energy_kwh",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
         value_fn=lambda payload: _sum_field(_month_rows(payload), "value"),
     ),
     RegazSensorDescription(
@@ -152,7 +172,6 @@ SENSOR_DESCRIPTIONS: tuple[RegazSensorDescription, ...] = (
         translation_key="total_gas_volume_m3",
         native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
         device_class=SensorDeviceClass.GAS,
-        state_class=SensorStateClass.TOTAL_INCREASING,
         value_fn=lambda payload: _sum_field(_month_rows(payload), "volume"),
     ),
     RegazSensorDescription(
@@ -161,8 +180,13 @@ SENSOR_DESCRIPTIONS: tuple[RegazSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL,
-        value_fn=lambda payload: _to_float((_current_month_row(payload) or {}).get("value")),
+        value_fn=lambda payload: _to_float(
+            (_current_month_row(payload) or {}).get("value")
+        ),
         attrs_fn=_month_attrs,
+        reset_fn=lambda payload: _period_reset(
+            _current_month_row(payload), monthly=True
+        ),
     ),
     RegazSensorDescription(
         key="current_month_volume_m3",
@@ -170,8 +194,13 @@ SENSOR_DESCRIPTIONS: tuple[RegazSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
         device_class=SensorDeviceClass.GAS,
         state_class=SensorStateClass.TOTAL,
-        value_fn=lambda payload: _to_float((_current_month_row(payload) or {}).get("volume")),
+        value_fn=lambda payload: _to_float(
+            (_current_month_row(payload) or {}).get("volume")
+        ),
         attrs_fn=_month_attrs,
+        reset_fn=lambda payload: _period_reset(
+            _current_month_row(payload), monthly=True
+        ),
     ),
     RegazSensorDescription(
         key="current_year_energy_kwh",
@@ -179,8 +208,13 @@ SENSOR_DESCRIPTIONS: tuple[RegazSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL,
-        value_fn=lambda payload: _to_float((_current_year_row(payload) or {}).get("value")),
+        value_fn=lambda payload: _to_float(
+            (_current_year_row(payload) or {}).get("value")
+        ),
         attrs_fn=_year_attrs,
+        reset_fn=lambda payload: _period_reset(
+            _current_year_row(payload), monthly=False
+        ),
     ),
     RegazSensorDescription(
         key="current_year_volume_m3",
@@ -188,8 +222,13 @@ SENSOR_DESCRIPTIONS: tuple[RegazSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfVolume.CUBIC_METERS,
         device_class=SensorDeviceClass.GAS,
         state_class=SensorStateClass.TOTAL,
-        value_fn=lambda payload: _to_float((_current_year_row(payload) or {}).get("volume")),
+        value_fn=lambda payload: _to_float(
+            (_current_year_row(payload) or {}).get("volume")
+        ),
         attrs_fn=_year_attrs,
+        reset_fn=lambda payload: _period_reset(
+            _current_year_row(payload), monthly=False
+        ),
     ),
     RegazSensorDescription(
         key="meter_index",
@@ -271,6 +310,11 @@ class RegazEnergySensor(CoordinatorEntity, SensorEntity):
         return self.entity_description.value_fn(payload)
 
     @property
+    def last_reset(self) -> datetime | None:
+        """Tell Home Assistant when a period total starts a new cycle."""
+        return self.entity_description.reset_fn(self.coordinator.data or {})
+
+    @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return optional attributes."""
         payload = self.coordinator.data or {}
@@ -282,8 +326,10 @@ class RegazEnergySensor(CoordinatorEntity, SensorEntity):
     def device_info(self) -> DeviceInfo:
         """Return parent device info."""
         payload = self.coordinator.data or {}
-        home_uuid = str(payload.get("home_uuid") or self.coordinator.home_uuid or "current")
-        pce = (_meter(payload).get("pce") or (payload.get("pce") or {}).get("pce"))
+        home_uuid = str(
+            payload.get("home_uuid") or self.coordinator.home_uuid or "current"
+        )
+        pce = _meter(payload).get("pce") or (payload.get("pce") or {}).get("pce")
         name = f"REGAZ Home {pce}" if pce else "REGAZ Home"
 
         return DeviceInfo(

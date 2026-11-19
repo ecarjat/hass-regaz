@@ -51,7 +51,7 @@ async def _async_validate_user_input(user_input: Mapping[str, str]) -> dict[str,
             raise InvalidAuth from err
         except RegazApiError as err:
             raise CannotConnect from err
-        except aiohttp.ClientError as err:
+        except (aiohttp.ClientError, TimeoutError) as err:
             raise CannotConnect from err
 
     account_uuid = str(me.get("uuid") or user_input[CONF_USERNAME])
@@ -64,7 +64,9 @@ class RegazEnergyConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
-    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
         """Handle user initiated flow."""
         errors: dict[str, str] = {}
 
@@ -162,7 +164,9 @@ class RegazEnergyConfigFlow(ConfigFlow, domain=DOMAIN):
 class RegazEnergyOptionsFlow(OptionsFlow):
     """Options flow for REGAZ settings."""
 
-    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
         """Manage options."""
         if user_input is not None:
             return self.async_create_entry(data=user_input)

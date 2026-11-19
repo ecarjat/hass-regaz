@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import pytest
+from unittest.mock import AsyncMock
 
 pytest.importorskip("homeassistant")
 
-from custom_components.regaz_energy.api import RegazApiClient, RegazAuthError, RegazRequestError
+from custom_components.regaz_energy.api import (
+    RegazApiClient,
+    RegazAuthError,
+    RegazRequestError,
+)
 
 
 class FakeResponse:
@@ -51,7 +57,9 @@ class FakeSession:
 
 @pytest.mark.asyncio
 async def test_authentication_success_then_get_me() -> None:
-    session = FakeSession([FakeResponse(204), FakeResponse(200, {"uuid": "acc", "homes": []})])
+    session = FakeSession(
+        [FakeResponse(204), FakeResponse(200, {"uuid": "acc", "homes": []})]
+    )
     client = RegazApiClient(
         session,
         username="user@example.com",
@@ -78,7 +86,9 @@ async def test_authentication_failure_raises_auth_error() -> None:
 
 @pytest.mark.asyncio
 async def test_get_me_server_error_maps_request_error() -> None:
-    session = FakeSession([FakeResponse(204), FakeResponse(500, {"message": "Internal Server Error"})])
+    session = FakeSession(
+        [FakeResponse(204), FakeResponse(500, {"message": "Internal Server Error"})]
+    )
     client = RegazApiClient(
         session,
         username="user@example.com",
@@ -87,3 +97,41 @@ async def test_get_me_server_error_maps_request_error() -> None:
 
     with pytest.raises(RegazRequestError):
         await client.async_get_me(extra=True)
+
+
+@pytest.mark.asyncio
+async def test_snapshot_preserves_meter_when_statistics_endpoint_fails() -> None:
+    client = RegazApiClient(FakeSession([]), username="user", password="secret")
+    client.async_get_me = AsyncMock(return_value={"homes": [{"uuid": "home"}]})
+    client.async_get_pce = AsyncMock(return_value={})
+    client.async_get_meter_info = AsyncMock(return_value={"valeurPrecise": 123})
+    client.async_get_indicators = AsyncMock(side_effect=TimeoutError())
+    client.async_get_statistics = AsyncMock(side_effect=TimeoutError())
+    snapshot = await client.async_get_home_snapshot()
+    assert snapshot["meter_info"]["valeurPrecise"] == 123
+    assert snapshot["statistics_all"] is None
+    assert set(snapshot["failed_sections"]) == {"indicators", "statistics_all"}
+
+
+@pytest.mark.asyncio
+async def test_snapshot_rejects_absent_home_uuid() -> None:
+    client = RegazApiClient(FakeSession([]), username="user", password="secret")
+    client.async_get_me = AsyncMock(return_value={"homes": [{}]})
+    with pytest.raises(RegazRequestError):
+        await client.async_get_home_snapshot()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_expired_requests_only_reauthenticate_once() -> None:
+    session = FakeSession([FakeResponse(204)])
+    client = RegazApiClient(session, username="user", password="secret")
+    client._authenticated = True
+    client._auth_generation = 1
+    await asyncio.gather(
+        *(
+            client.async_authenticate(force=True, unless_generation_changed=1)
+            for _ in range(3)
+        )
+    )
+    assert client._auth_generation == 2
+    assert not session.responses

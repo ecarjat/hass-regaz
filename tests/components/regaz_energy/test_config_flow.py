@@ -15,10 +15,16 @@ from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.regaz_energy.const import CONF_UPDATE_INTERVAL_HOURS, DOMAIN
+from custom_components.regaz_energy.config_flow import (
+    CannotConnect,
+    _async_validate_user_input,
+)
 
 
 @pytest.mark.asyncio
-async def test_user_flow_success(hass, enable_custom_integrations, monkeypatch) -> None:
+async def test_user_flow_success(
+    recorder_mock, hass, enable_custom_integrations, monkeypatch
+) -> None:
     async def mock_validate(user_input):
         return {"account_uuid": "acc-123", "title": "user@example.com"}
 
@@ -51,6 +57,7 @@ async def test_user_flow_success(hass, enable_custom_integrations, monkeypatch) 
 
 @pytest.mark.asyncio
 async def test_reauth_flow_updates_credentials(
+    recorder_mock,
     hass,
     enable_custom_integrations,
     monkeypatch,
@@ -98,7 +105,9 @@ async def test_reauth_flow_updates_credentials(
 
 
 @pytest.mark.asyncio
-async def test_options_flow_updates_interval(hass, enable_custom_integrations) -> None:
+async def test_options_flow_updates_interval(
+    recorder_mock, hass, enable_custom_integrations
+) -> None:
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_USERNAME: "user@example.com", CONF_PASSWORD: "secret"},
@@ -107,7 +116,9 @@ async def test_options_flow_updates_interval(hass, enable_custom_integrations) -
     entry.add_to_hass(hass)
 
     # Newer Home Assistant versions expose config_entry as a read-only property.
-    with patch.object(OptionsFlow, "config_entry", property(OptionsFlow.config_entry.fget)):
+    with patch.object(
+        OptionsFlow, "config_entry", property(OptionsFlow.config_entry.fget)
+    ):
         result = await hass.config_entries.options.async_init(entry.entry_id)
         assert result["type"] == FlowResultType.FORM
         marker = next(iter(result["data_schema"].schema))
@@ -118,3 +129,17 @@ async def test_options_flow_updates_interval(hass, enable_custom_integrations) -
         )
     assert result["type"] == FlowResultType.CREATE_ENTRY
     assert entry.options[CONF_UPDATE_INTERVAL_HOURS] == 6
+
+
+@pytest.mark.asyncio
+async def test_login_timeout_is_a_connection_error() -> None:
+    with patch(
+        "custom_components.regaz_energy.config_flow.aiohttp.ClientSession"
+    ), patch(
+        "custom_components.regaz_energy.config_flow.RegazApiClient.async_authenticate",
+        AsyncMock(side_effect=TimeoutError()),
+    ):
+        with pytest.raises(CannotConnect):
+            await _async_validate_user_input(
+                {CONF_USERNAME: "user", CONF_PASSWORD: "secret"}
+            )

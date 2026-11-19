@@ -68,6 +68,11 @@
       "meter_last_reading_at": {
         "name": "Meter last reading at"
       }
+    },
+    "binary_sensor": {
+      "reading_problem": {
+        "name": "Meter data problem"
+      }
     }
   }
 }

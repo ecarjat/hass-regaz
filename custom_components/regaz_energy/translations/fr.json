@@ -68,6 +68,11 @@
       "meter_last_reading_at": {
         "name": "Date du dernier relevé"
       }
+    },
+    "binary_sensor": {
+      "reading_problem": {
+        "name": "Problème de données du compteur"
+      }
     }
   }
 }

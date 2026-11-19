@@ -5,6 +5,7 @@
     "@ecarjat"
   ],
   "config_flow": true,
+  "dependencies": ["recorder"],
   "documentation": "https://github.com/ecarjat/hass-regaz#readme",
   "issue_tracker": "https://github.com/ecarjat/hass-regaz/issues",
   "iot_class": "cloud_polling",
@@ -12,5 +13,5 @@
     "custom_components.regaz_energy"
   ],
   "requirements": [],
-  "version": "0.1.0"
+  "version": "0.2.0"
 }

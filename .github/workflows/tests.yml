@@ -1,0 +1,30 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - python: "3.12"
+            harness: "0.13.205"
+            homeassistant: "2025.1.4"
+            pytest: "8.3.4"
+            pytest_asyncio: "0.24.0"
+          - python: "3.14"
+            harness: "0.13.375"
+            homeassistant: "2026.11.2"
+            pytest: "9.0.3"
+            pytest_asyncio: "1.4.0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install "pytest-homeassistant-custom-component==${{ matrix.harness }}" "pytest==${{ matrix.pytest }}" "pytest-asyncio==${{ matrix.pytest_asyncio }}"
+      - run: python -m pip install "homeassistant==${{ matrix.homeassistant }}"
+      - run: python tests/run_ha_current.py
