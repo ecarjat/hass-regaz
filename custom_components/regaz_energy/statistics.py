@@ -53,8 +53,15 @@ def _daily_rows(
         days[day] = (energy, volume)
     expected = (end - start).days + 1
     if len(days) != expected:
+        first_missing = next(
+            start + timedelta(days=offset)
+            for offset in range(expected)
+            if start + timedelta(days=offset) not in days
+        )
+        latest = f" Latest available date in this range: {max(days)}." if days else ""
         raise HomeAssistantError(
-            "REGAZ daily history is incomplete; no statistics were imported"
+            f"REGAZ has no daily reading for {first_missing}.{latest} "
+            "No statistics were imported."
         )
     return [(day, *days[day]) for day in sorted(days)]
 

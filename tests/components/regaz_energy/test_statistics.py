@@ -87,6 +87,23 @@ async def test_import_rejects_missing_or_invalid_days_before_writing(hass, bad_r
 
 
 @pytest.mark.asyncio
+async def test_missing_last_day_reports_available_date(hass):
+    MemoryStore.data = None
+    api = Api()
+    with patch("custom_components.regaz_energy.statistics.Store", MemoryStore), patch(
+        "custom_components.regaz_energy.statistics.async_add_external_statistics"
+    ) as add:
+        with pytest.raises(HomeAssistantError) as error:
+            await async_import_daily_history(
+                hass, "entry123", api, "home", date(2025, 10, 28), date(2025, 10, 30)
+            )
+        assert "2025-10-30" in str(error.value)
+        assert "2025-10-29" in str(error.value)
+        assert "No statistics were imported" in str(error.value)
+        add.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_import_writes_real_recorder_and_updates_revisions(recorder_mock, hass):
     api = Api()
     await async_import_daily_history(
